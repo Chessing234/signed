@@ -59,9 +59,10 @@ public:
     // Writes the signed copy; public so tests can save without a dialog.
     bool saveTo(const QString &target);
 
-    // Placement takes the center point; returns the new item's row.
+    // Placement takes the center point (or, for text starting at the mouse,
+    // the left edge's midpoint); returns the new item's row.
     Q_INVOKABLE int placeSignature(const QString &name, int page, qreal centerX, qreal centerY);
-    Q_INVOKABLE int placeText(int page, qreal centerX, qreal centerY, const QString &text);
+    Q_INVOKABLE int placeText(int page, qreal x, qreal centerY, const QString &text, bool fromLeft = false);
     Q_INVOKABLE QString today() const;
     Q_INVOKABLE void rememberSize(int row);
 

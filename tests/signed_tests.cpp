@@ -99,7 +99,7 @@ bool near(const QRect &actual, const QRect &expected) {
 
 }
 
-class SignatureTests : public QObject {
+class SignedTests : public QObject {
     Q_OBJECT
 
 private slots:
@@ -542,5 +542,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(SignatureTests)
-#include "signature_tests.moc"
+QTEST_MAIN(SignedTests)
+#include "signed_tests.moc"

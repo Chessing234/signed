@@ -85,7 +85,7 @@ bool Backend::openUrl(const QUrl &url) {
 
     std::unique_ptr<Poppler::Document> document = Poppler::Document::load(path);
     if (!document) {
-        setNotice(QStringLiteral("%1 isn't a PDF Signature can read.").arg(name));
+        setNotice(QStringLiteral("%1 isn't a PDF Signed can read.").arg(name));
         return false;
     }
     if (document->isLocked()) {
@@ -179,14 +179,15 @@ qreal Backend::textSize() const {
     return m_settings->value("textSize", DefaultTextSize).toReal();
 }
 
-int Backend::placeText(int page, qreal centerX, qreal centerY, const QString &text) {
+int Backend::placeText(int page, qreal x, qreal centerY, const QString &text, bool fromLeft) {
     if (page < 0 || page >= pageCount())
         return -1;
     Item probe;
     probe.text = text;
     probe.fontSize = textSize();
     const QSizeF size = probe.size();
-    return m_items.addText(page, centerX - size.width() / 2, centerY - size.height() / 2, text, probe.fontSize);
+    const qreal left = fromLeft ? x : x - size.width() / 2;
+    return m_items.addText(page, left, centerY - size.height() / 2, text, probe.fontSize);
 }
 
 // The locale's own short date, with the full year: a signed document should

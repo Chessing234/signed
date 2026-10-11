@@ -1,4 +1,6 @@
-# Signature
+# Signed
+
+(Planned as "Signature"; renamed to Signed. The button and the saved signatures keep the word "signature".)
 
 Sign and fill in PDFs. Open a PDF, drop your signature, a line of text, or today's date anywhere on a page, move and size it, and save a signed copy. Modeled on the markup tools in Apple's Preview, cut down to just the signing part.
 
@@ -59,7 +61,7 @@ The Signature button opens a popup listing saved signatures by name, each with i
 - A **Name** field ("David", "Initials").
 - Save.
 
-Signatures are stored as `~/.local/share/signature/signatures/<name>.png` (respecting `$XDG_DATA_HOME`), written atomically. The file name is the name; no database, no index. Names that are empty, start with a dot, or contain `/` are rejected; an existing name asks to replace.
+Signatures are stored as `~/.local/share/signed/signatures/<name>.png` (respecting `$XDG_DATA_HOME`), written atomically. The file name is the name; no database, no index. Names that are empty, start with a dot, or contain `/` are rejected; an existing name asks to replace.
 
 Placed signatures keep their own copy of the image in the session, so deleting or replacing a signature in the library never breaks items already on the page or in undo history.
 
@@ -67,7 +69,7 @@ First run: the Signature menu is empty and says "Add an image of your signature 
 
 ## Placing and editing items
 
-- Inserting places the item in the center of the visible part of the **current page** (the page covering the middle of the viewport), selected. A signature uses the size it was last placed at (remembered per signature), else ~1.5 in wide; text starts at the last-used size, else 12 pt.
+- Inserting places the item at the mouse pointer when it's over a page (signatures centered on it, text starting at it); otherwise in the center of the visible part of the **current page** (the page covering the middle of the viewport). A signature picked from the menu goes where the pointer was when the menu opened; a dropped image goes where it was dropped. The new item is selected. A signature uses the size it was last placed at (remembered per signature), else ~1.5 in wide; text starts at the last-used size, else 12 pt.
 - **Click** selects; the selection shows an accent outline and a corner handle at the bottom-right.
 - **Drag** moves; items are clamped to stay on their page. Dragging between pages is not supported; delete and re-add.
 - **Drag the corner** scales, keeping aspect ratio. For text, scaling changes the font size.
@@ -123,7 +125,7 @@ struct Item {
 ## Code shape
 
 ```text
-signature.pro
+signed.pro
 bin/build  bin/test  bin/install
 src/main.cpp
 src/backend.{h,cpp}          open/save, current file, dirty flag, undo stack, errors
@@ -140,8 +142,8 @@ src/PageView.qml             one page image + its items
 src/PlacedItem.qml             a placed item: move, scale handle, inline text editing
 src/SignatureMenu.qml        popup list + add dialog
 src/resources.qrc
-tests/signature_tests.{pro,cpp}
-pkgbuild/PKGBUILD  signature.desktop  signature.svg  signature.install
+tests/signed_tests.{pro,cpp}
+pkgbuild/PKGBUILD  signed.desktop  signed.svg  signed.install
 ```
 
 Roughly Omacut-sized (~2–3k lines).

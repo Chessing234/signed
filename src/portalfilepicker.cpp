@@ -84,7 +84,7 @@ PortalFileFilter allFilter() {
 }
 
 QString portalToken() {
-    return QStringLiteral("signature_%1").arg(QRandomGenerator::global()->generate());
+    return QStringLiteral("signed_%1").arg(QRandomGenerator::global()->generate());
 }
 
 QByteArray portalPathBytes(const QString &path) {

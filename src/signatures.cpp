@@ -63,7 +63,7 @@ int luminance(QRgb pixel) {
 SignatureLibrary::SignatureLibrary(const QString &directory, QObject *parent)
     : QAbstractListModel(parent),
       m_directory(directory.isEmpty()
-                      ? QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/signature/signatures"
+                      ? QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/signed/signatures"
                       : directory) {
     reload();
 }

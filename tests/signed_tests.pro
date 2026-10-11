@@ -1,7 +1,7 @@
 QT += core gui qml quick quickcontrols2 testlib dbus
 CONFIG += c++17 testcase link_pkgconfig
 PKGCONFIG += poppler-qt6 libqpdf
-TARGET = signature_tests
+TARGET = signed_tests
 TEMPLATE = app
 
 INCLUDEPATH += ../src
@@ -17,7 +17,7 @@ HEADERS += \
     ../src/theme.h
 
 SOURCES += \
-    signature_tests.cpp \
+    signed_tests.cpp \
     ../src/backend.cpp \
     ../src/items.cpp \
     ../src/pageprovider.cpp \

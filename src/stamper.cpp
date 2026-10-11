@@ -126,7 +126,7 @@ QList<int> writeOverlay(const QString &path, const QList<Geometry> &pages, const
     writer.setResolution(72);
     writer.setPageMargins(QMarginsF(0, 0, 0, 0));
     writer.setPageSize(pageSize(byPage.firstKey()));
-    writer.setCreator(QStringLiteral("Signature"));
+    writer.setCreator(QStringLiteral("Signed"));
 
     QPainter painter(&writer);
     if (!painter.isActive())

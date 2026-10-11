@@ -1,4 +1,4 @@
-# Signature
+# Signed
 
 Sign PDFs and fill them in. Open a PDF, drop your signature, a line of text, or today's date anywhere on a page, move and size them, and save a signed copy. Modeled on the signing tools in Apple's Preview, and nothing more. On Omarchy, the interface follows your theme's accent color.
 
@@ -6,20 +6,20 @@ Built with **Qt Quick (QML)** and the Material style, **poppler** to show pages,
 
 ## Signing
 
-- **Signature** (or *S*) places your last-used signature in the middle of the page you're looking at. The menu next to it lists every saved signature by name.
-- **Text** (or *T*) places a text box and starts editing it. *Shift+Enter* starts a new line; *Enter* or *Esc* finishes. A text box left empty disappears.
+- **Signature** (or *S*) places your last-used signature under the mouse pointer, or in the middle of the page you're looking at when the pointer isn't over a page. The menu next to it lists every saved signature by name.
+- **Text** (or *T*) places a text box starting at the mouse pointer and starts editing it. *Shift+Enter* starts a new line; *Enter* or *Esc* finishes. A text box left empty disappears.
 - **Date** (or *D*) places today's date in your locale's format, as ordinary text you can edit.
 - **Drag** anything to move it, and **drag its corner** to scale it. Signatures and text remember the size you last gave them.
 - **Double-click** text to edit it again.
 - **Save signed copy…** (*Ctrl+S*) writes a new PDF beside the original, named `<name>-signed.pdf` by default.
 
-The original PDF is never changed, and Signature won't save over it. The signed copy keeps the original pages exactly as they were — text stays selectable, nothing is re-rendered — with your signatures and text laid on top. Placed items stay editable until you close the PDF, so you can fix something and save again.
+The original PDF is never changed, and Signed won't save over it. The signed copy keeps the original pages exactly as they were — text stays selectable, nothing is re-rendered — with your signatures and text laid on top. Placed items stay editable until you close the PDF, so you can fix something and save again.
 
 ## Signatures
 
-Choose **Add signature…** in the Signature menu, or drop an image on the window. Use a scan or a well-lit photo of your signature on white paper: Signature removes the paper, keeps the ink (blue stays blue), and crops to it. Slide **Paper threshold** toward *More* if shadows show up, or toward *Less* if faint strokes disappear. PNGs that are already transparent are used as they are. Give it a name like "David" or "Initials".
+Choose **Add signature…** in the Signature menu, or drop an image on the window. Use a scan or a well-lit photo of your signature on white paper: Signed removes the paper, keeps the ink (blue stays blue), and crops to it. Slide **Paper threshold** toward *More* if shadows show up, or toward *Less* if faint strokes disappear. PNGs that are already transparent are used as they are. Give it a name like "David" or "Initials".
 
-Signatures are saved as PNGs in `~/.local/share/signature/signatures/` (under `$XDG_DATA_HOME` if set), named after the signature. Deleting one from the menu doesn't affect anything already placed.
+Signatures are saved as PNGs in `~/.local/share/signed/signatures/` (under `$XDG_DATA_HOME` if set), named after the signature. Deleting one from the menu doesn't affect anything already placed.
 
 ## Hotkeys
 
@@ -63,7 +63,7 @@ Uses Qt's own build tool, `qmake6`:
 
 ```bash
 ./bin/build
-./build/signature some.pdf
+./build/signed some.pdf
 ```
 
 Run the tests (offscreen) with `./bin/test`, and install as an Arch package with `./bin/install`.

@@ -1,5 +1,5 @@
 import QtQuick
-import Signature
+import Signed
 
 // A placed signature or text: drag it to move, drag the corner to scale,
 // double-click text to edit it.

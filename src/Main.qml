@@ -11,7 +11,7 @@ ApplicationWindow {
     minimumWidth: 720
     minimumHeight: 480
     visible: true
-    title: backend.hasDocument ? backend.fileName + " — Signature" : "Signature"
+    title: backend.hasDocument ? backend.fileName + " — Signed" : "Signed"
     color: "#0e0e10"
 
     Material.theme: Material.Dark
@@ -54,9 +54,28 @@ ApplicationWindow {
         selected = -1;
     }
 
-    // Where a new item goes: the middle of the part of the current page
-    // that's on screen.
+    // The spot on a page under a point in the body, or null when the point
+    // isn't over a page.
+    function pagePointAt(position) {
+        const view = pageList.mapFromItem(body, position.x, position.y);
+        const page = pageList.indexAt(pageList.contentX + view.x, pageList.contentY + view.y);
+        const row = page >= 0 ? pageList.itemAtIndex(page) : null;
+        if (!row)
+            return null;
+        const local = row.sheet.mapFromItem(body, position.x, position.y);
+        if (local.x < 0 || local.y < 0 || local.x > row.sheet.width || local.y > row.sheet.height)
+            return null;
+        return { page: page, x: local.x / viewScale, y: local.y / viewScale, pointer: true };
+    }
+
+    // Where a new item goes: under the mouse when it's over a page, otherwise
+    // the middle of the part of the current page that's on screen.
     function insertPoint() {
+        if (pageHover.hovered && !blocked) {
+            const p = pagePointAt(pageHover.point.position);
+            if (p)
+                return p;
+        }
         const page = currentPage;
         const row = pageList.itemAtIndex(page);
         if (!row)
@@ -66,15 +85,19 @@ ApplicationWindow {
         const bottom = Math.min(pageList.contentY + pageList.height, row.y + row.height);
         const left = Math.max(pageList.contentX, sheetX);
         const right = Math.min(pageList.contentX + pageList.width, sheetX + row.sheet.width);
-        return { page: page, x: ((left + right) / 2 - sheetX) / viewScale, y: ((top + bottom) / 2 - row.y) / viewScale };
+        return { page: page, x: ((left + right) / 2 - sheetX) / viewScale, y: ((top + bottom) / 2 - row.y) / viewScale, pointer: false };
     }
 
-    function placeSignature(name) {
+    // A signature picked from the menu (or added through it) goes where the
+    // mouse was when the menu opened, not where the menu is.
+    property var pendingPoint: null
+
+    function placeSignature(name, at) {
         signatureMenu.close();
         if (!backend.hasDocument)
             return;
         deselect();
-        const p = insertPoint();
+        const p = at || insertPoint();
         const row = backend.placeSignature(name, p.page, p.x, p.y);
         if (row >= 0)
             selected = row;
@@ -91,7 +114,7 @@ ApplicationWindow {
         // A new text item and its first edit are one undo step; if nothing is
         // typed, it disappears without a trace.
         backend.items.beginChange();
-        const row = backend.placeText(p.page, p.x, p.y, "");
+        const row = backend.placeText(p.page, p.x, p.y, "", p.pointer);
         if (row < 0) {
             backend.items.endChange();
             return;
@@ -102,7 +125,7 @@ ApplicationWindow {
     function placeDate() {
         deselect();
         const p = insertPoint();
-        const row = backend.placeText(p.page, p.x, p.y, backend.today());
+        const row = backend.placeText(p.page, p.x, p.y, backend.today(), p.pointer);
         if (row >= 0)
             selected = row;
     }
@@ -141,6 +164,7 @@ ApplicationWindow {
             backend.chooseSignatureImage();
             return;
         }
+        pendingPoint = backend.hasDocument ? insertPoint() : null;
         signatureMenu.open();
     }
     function goToPage(page) {
@@ -266,7 +290,7 @@ ApplicationWindow {
             spacing: 8
 
             Label {
-                text: backend.hasDocument ? backend.fileName : "Signature"
+                text: backend.hasDocument ? backend.fileName : "Signed"
                 color: "white"
                 font.pixelSize: 14
                 font.weight: Font.DemiBold
@@ -388,6 +412,8 @@ ApplicationWindow {
                 TapHandler { onTapped: win.goToPage(thumb.index) }
             }
         }
+        HoverHandler { id: pageHover }
+
         Rectangle { visible: thumbs.visible; x: thumbs.width; width: 1; height: parent.height; color: "black" }
 
         ListView {
@@ -579,8 +605,11 @@ ApplicationWindow {
             const name = url.toString().toLowerCase();
             if (name.endsWith(".pdf"))
                 win.openPdf(url);
-            else if (/\.(png|jpe?g|webp)$/.test(name))
+            else if (/\.(png|jpe?g|webp)$/.test(name)) {
+                // A dropped signature lands where it was dropped.
+                win.pendingPoint = backend.hasDocument ? win.pagePointAt(body.mapFromItem(null, drop.x, drop.y)) : null;
                 backend.loadSignatureImage(win.urlToPath(url));
+            }
         }
     }
 
@@ -590,7 +619,7 @@ ApplicationWindow {
         x: signatureButton.width - width
         y: signatureButton.height + 8
         accent: win.accent
-        onPicked: (name) => win.placeSignature(name)
+        onPicked: (name) => win.placeSignature(name, win.pendingPoint)
         onAddRequested: {
             close();
             backend.chooseSignatureImage();
@@ -607,7 +636,7 @@ ApplicationWindow {
         id: addSignature
         accent: win.accent
         accentForeground: win.accentForeground
-        onSaved: (name) => win.placeSignature(name)
+        onSaved: (name) => win.placeSignature(name, win.pendingPoint)
     }
 
     // --- hotkeys ---

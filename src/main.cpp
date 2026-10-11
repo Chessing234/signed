@@ -1,4 +1,4 @@
-// signature — sign PDFs and fill them in with text and dates.
+// signed — sign PDFs and fill them in with text and dates.
 
 #include <QGuiApplication>
 #include <QIcon>
@@ -18,17 +18,17 @@
 
 int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
-    app.setApplicationName("signature");
-    app.setOrganizationName("signature");
+    app.setApplicationName("signed");
+    app.setOrganizationName("signed");
     app.setApplicationVersion("0.1.0");
 
-    // Matches the window to signature.desktop, so the compositor (Wayland
+    // Matches the window to signed.desktop, so the compositor (Wayland
     // app_id) and the launcher pick up the installed icon.
-    app.setDesktopFileName("signature");
-    app.setWindowIcon(QIcon::fromTheme("signature"));
+    app.setDesktopFileName("signed");
+    app.setWindowIcon(QIcon::fromTheme("signed"));
 
     QQuickStyle::setStyle("Material");
-    qmlRegisterType<TextItem>("Signature", 1, 0, "TextItem");
+    qmlRegisterType<TextItem>("Signed", 1, 0, "TextItem");
 
     Theme theme;
     QSettings settings;
