@@ -1,5 +1,7 @@
 # Signed
 
+![Signed with a signature, a date, and text placed on a lease](docs/screenshot.png)
+
 Sign PDFs and fill them in. Open a PDF, drop your signature, a line of text, or today's date anywhere on a page, move and size them, and save a signed copy. Modeled on the signing tools in Apple's Preview, and nothing more. On Omarchy, the interface follows your theme's accent color.
 
 Built with **Qt Quick (QML)** and the Material style, **poppler** to show pages, and **qpdf** to write the signed copy. The C++ side compiles to a single executable with the QML embedded.
