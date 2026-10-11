@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Signature
+GenericName=PDF Signer
+Comment=Sign PDFs and fill them in with text and dates
+Exec=signature %f
+Icon=signature
+Terminal=false
+Categories=Office;Utility;
+MimeType=application/pdf;
+Keywords=pdf;sign;signature;fill;form;date;
+StartupWMClass=signature
