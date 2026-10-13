@@ -28,7 +28,7 @@ Item {
         anchors.topMargin: 2
         anchors.bottomMargin: -6
         color: "#60000000"
-        radius: 2
+        radius: Math.min(2, theme.radius)
     }
     Rectangle { anchors.fill: parent; color: "white" }
 

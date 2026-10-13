@@ -110,6 +110,27 @@ private slots:
         QCOMPARE(theme.accentForeground(), QString("black"));
     }
 
+    void themeFollowsHyprlandRounding() {
+        QTemporaryDir dir;
+        const auto response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
+        auto write = [](const QString &path, const QByteArray &data) {
+            QFile f(path);
+            return f.open(QIODevice::WriteOnly) && f.write(data) == data.size();
+        };
+        QVERIFY(write(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n"));
+        QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        QVERIFY(write(response, "{\"int\":0}"));
+        Theme theme(dir.path(), nullptr, command);
+        QCOMPARE(theme.radius(), 0);
+        QVERIFY(write(response, "{\"int\":6}"));
+        QTRY_COMPARE(theme.radius(), 6);
+        QVERIFY(write(response, "unavailable"));
+        QTest::qWait(1200);
+        QCOMPARE(theme.radius(), 6);
+        QVERIFY(write(response, "{\"int\":0}"));
+        QTRY_COMPARE(theme.radius(), 0);
+    }
+
     void themeReadsAccent() {
         QTemporaryDir dir;
         QDir(dir.path()).mkpath("theme");

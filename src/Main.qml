@@ -16,6 +16,7 @@ ApplicationWindow {
 
     Material.theme: Material.Dark
     Material.accent: theme.accent
+    Material.roundedScale: theme.radius
 
     readonly property color accent: theme.accent
     readonly property color accentForeground: theme.accentForeground
@@ -395,7 +396,7 @@ ApplicationWindow {
                         anchors.fill: parent
                         anchors.margins: -5
                         color: "transparent"
-                        radius: 3
+                        radius: Math.min(3, theme.radius)
                         border.width: 2.5
                         border.color: win.accent
                         visible: thumb.current
@@ -481,7 +482,7 @@ ApplicationWindow {
             Layout.bottomMargin: 8
             width: 120
             height: 150
-            radius: 10
+            radius: theme.radius
             color: "transparent"
             border.color: "#3a3a3c"
             border.width: 2
@@ -584,7 +585,7 @@ ApplicationWindow {
             Rectangle {
                 width: 22
                 height: 22
-                radius: 5
+                radius: Math.min(5, theme.radius)
                 color: helpHover.hovered ? "#2c2c2f" : "transparent"
                 border.color: "#3a3a3c"
                 Label { anchors.centerIn: parent; text: "?"; color: helpHover.hovered ? "white" : "#7a7a80"; font.pixelSize: 12 }
@@ -651,7 +652,7 @@ ApplicationWindow {
             anchors.centerIn: parent
             width: helpLayout.implicitWidth + 64
             height: helpLayout.implicitHeight + 56
-            radius: 14
+            radius: theme.radius
             color: "#1c1c1e"
 
             ColumnLayout {
