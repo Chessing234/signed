@@ -192,7 +192,7 @@ int Backend::placeText(int page, qreal x, qreal centerY, const QString &text, bo
 
 // The locale's own short date, with the full year: a signed document should
 // never be ambiguous about the century.
-QString Backend::today() const {
+QString Backend::currentDate() {
     const QLocale locale = QLocale::system();
     QString format = locale.dateFormat(QLocale::ShortFormat);
     if (!format.contains(QLatin1String("yyyy")))

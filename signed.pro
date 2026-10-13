@@ -6,6 +6,7 @@ TARGET = signed
 TEMPLATE = app
 
 HEADERS += \
+    src/cli.h \
     src/backend.h \
     src/filepicker.h \
     src/items.h \
@@ -18,6 +19,7 @@ HEADERS += \
     src/theme.h
 
 SOURCES += \
+    src/cli.cpp \
     src/main.cpp \
     src/backend.cpp \
     src/items.cpp \

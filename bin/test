@@ -19,3 +19,7 @@ cd "$BUILD_DIR"
 "$QMAKE" "$ROOT/tests/signed_tests.pro"
 make -j"$(nproc)"
 QT_QPA_PLATFORM=offscreen ./signed_tests "$@"
+
+# The command line is tested as an agent uses it: the built binary, no display.
+"$ROOT/bin/build" >/dev/null
+python3 -m unittest discover -s "$ROOT/tests" -p 'test_*.py'

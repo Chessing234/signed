@@ -63,7 +63,8 @@ public:
     // the left edge's midpoint); returns the new item's row.
     Q_INVOKABLE int placeSignature(const QString &name, int page, qreal centerX, qreal centerY);
     Q_INVOKABLE int placeText(int page, qreal x, qreal centerY, const QString &text, bool fromLeft = false);
-    Q_INVOKABLE QString today() const;
+    Q_INVOKABLE QString today() const { return currentDate(); }
+    static QString currentDate();
     Q_INVOKABLE void rememberSize(int row);
 
     Q_INVOKABLE void chooseSignatureImage();
