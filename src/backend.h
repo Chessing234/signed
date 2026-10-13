@@ -10,6 +10,7 @@
 
 #include "items.h"
 #include "signatures.h"
+#include "signer.h"
 
 class FilePicker;
 class PageProvider;
@@ -69,9 +70,24 @@ public:
 
     Q_INVOKABLE void chooseSignatureImage();
     Q_INVOKABLE void setPreviewThreshold(qreal threshold);
-    Q_INVOKABLE QString saveSignature(const QString &name);
+    // Saving a signature binds its certificate: the given one, or a fresh
+    // self-signed certificate when no id is given (Common Name = name,
+    // Organization = organization).
+    Q_INVOKABLE QString saveSignature(const QString &name, const QString &organization = {}, const QString &certId = {});
     Q_INVOKABLE void removeSignature(const QString &name);
     Q_INVOKABLE void clearNotice();
+
+    // The signing certificates of the app's NSS database: [{id, name, organization}].
+    Q_INVOKABLE QVariantList signingCertificates() const;
+    // The certificate bound to a saved signature, or "".
+    Q_INVOKABLE QString signatureKey(const QString &name) const;
+
+    // Importing an existing certificate from a .p12/.pfx file: importCertificate()
+    // opens the file picker; when the file is password-protected,
+    // certImportNeedsPassword() asks for it and importCertificatePassword() retries.
+    Q_INVOKABLE void importCertificate();
+    Q_INVOKABLE void importCertificatePassword(const QString &password);
+    Q_INVOKABLE void cancelImport();
 
     Q_INVOKABLE bool loadSignatureImage(const QString &path);
 
@@ -82,11 +98,15 @@ signals:
     void lastSignatureChanged();
     void previewChanged();
     void signatureImageReady();
+    void certificateImportNeedsPassword();
+    void certificateImported(QString nickname);
+    void certificateImportFailed(QString message);
     void saved();
 
 private:
     void setNotice(const QString &notice);
     void updatePreview();
+    void import(const QString &path, const QString &password);
     qreal textSize() const;
 
     FilePicker *m_picker;
@@ -107,4 +127,5 @@ private:
     QString m_previewName;
     qreal m_previewThreshold = .25;
     int m_previewRevision = 0;
+    QString m_pendingImport;
 };

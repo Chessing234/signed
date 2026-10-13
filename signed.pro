@@ -13,6 +13,7 @@ HEADERS += \
     src/pageprovider.h \
     src/portalfilepicker.h \
     src/signatures.h \
+    src/signer.h \
     src/stamper.h \
     src/textitem.h \
     src/textlayout.h \
@@ -26,6 +27,7 @@ SOURCES += \
     src/pageprovider.cpp \
     src/portalfilepicker.cpp \
     src/signatures.cpp \
+    src/signer.cpp \
     src/stamper.cpp \
     src/textitem.cpp \
     src/textlayout.cpp \

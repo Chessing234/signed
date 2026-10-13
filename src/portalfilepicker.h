@@ -12,6 +12,7 @@ public:
 
     void openPdf(const QString &folder) override;
     void openImage(const QString &folder) override;
+    void openCertificate(const QString &folder) override;
     void savePdf(const QUrl &suggestedUrl) override;
 
 private slots:
@@ -22,6 +23,7 @@ private:
         None,
         OpenPdf,
         OpenImage,
+        OpenCertificate,
         Save
     };
 
