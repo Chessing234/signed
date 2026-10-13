@@ -19,7 +19,7 @@ Rectangle {
 
     implicitWidth: row.implicitWidth + 28
     implicitHeight: 34
-    radius: 7
+    radius: theme.radius
     color: primary ? accent : (hover.hovered && enabled ? "#3a3a3d" : "#2c2c2f")
     border.color: active ? accent : "transparent"
     border.width: active ? 2 : 0

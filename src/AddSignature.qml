@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 // Turns a chosen picture into a named signature: shows the picture beside the
@@ -53,7 +54,7 @@ Rectangle {
         anchors.centerIn: parent
         width: 620
         height: layout.implicitHeight + 48
-        radius: 14
+        radius: theme.radius
         color: "#1c1c1e"
 
         ColumnLayout {
@@ -78,7 +79,7 @@ Rectangle {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 170
-                    radius: 8
+                    radius: Math.min(8, theme.radius)
                     color: "#e9e4da"
                     clip: true
                     Image {
@@ -94,7 +95,7 @@ Rectangle {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 170
-                    radius: 8
+                    radius: Math.min(8, theme.radius)
                     clip: true
                     color: "white"
 
@@ -157,6 +158,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.topMargin: 10
                 placeholderText: "Name"
+                Material.roundedScale: theme.radius
                 onTextChanged: dialog.error = ""
                 onAccepted: dialog.save()
                 Keys.onEscapePressed: dialog.close()

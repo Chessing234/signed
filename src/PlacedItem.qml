@@ -89,7 +89,7 @@ Item {
         anchors.fill: parent
         anchors.margins: -3
         color: "transparent"
-        radius: 2
+        radius: Math.min(2, theme.radius)
         border.width: 1.5
         border.color: view.selected || view.editing ? view.accent : Qt.rgba(view.accent.r, view.accent.g, view.accent.b, 0.5)
         visible: view.selected || view.editing || hover.hovered

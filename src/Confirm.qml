@@ -43,7 +43,7 @@ Rectangle {
         anchors.centerIn: parent
         width: Math.max(column.implicitWidth, 360) + 56
         height: column.implicitHeight + 48
-        radius: 12
+        radius: theme.radius
         color: "#1c1c1e"
 
         MouseArea { anchors.fill: parent }

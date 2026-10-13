@@ -26,7 +26,7 @@ Popup {
 
     background: Rectangle {
         color: "#1c1c1e"
-        radius: 12
+        radius: theme.radius
         border.color: "#3a3a3c"
     }
 
@@ -72,7 +72,7 @@ Popup {
 
                     width: column.width
                     height: 62
-                    radius: 8
+                    radius: Math.min(8, theme.radius)
                     color: menu.highlighted === index ? "#2c2c2f" : "transparent"
 
                     HoverHandler {
@@ -88,7 +88,7 @@ Popup {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 150
                         height: 46
-                        radius: 5
+                        radius: Math.min(5, theme.radius)
                         color: "white"
                         Image {
                             anchors.fill: parent
@@ -136,7 +136,7 @@ Popup {
             Rectangle {
                 width: parent.width
                 height: 40
-                radius: 8
+                radius: Math.min(8, theme.radius)
                 color: menu.highlighted === list.count ? "#2c2c2f" : "transparent"
                 HoverHandler {
                     cursorShape: Qt.PointingHandCursor
