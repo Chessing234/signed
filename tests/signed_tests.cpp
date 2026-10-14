@@ -117,8 +117,10 @@ private slots:
         qputenv("XDG_DATA_HOME", QDir(dataHome.path()).filePath("data").toLocal8Bit());
     }
 
-    void keyringStartsEmpty() {
+    void keyringStartsEmptyAndUnwritten() {
         QVERIFY(Signer::certificates().isEmpty());
+        // Looking isn't asking: no database appears until a certificate does.
+        QVERIFY(!QFileInfo::exists(QDir(dataHome.path()).filePath("data/signed/certificates")));
     }
     void themeFallsBack() {
         QTemporaryDir dir;
@@ -616,7 +618,7 @@ private slots:
         QCOMPARE(info.signatureStatus(), Poppler::SignatureValidationInfo::SignatureValid);
     }
 
-    void savingSignsUnboundSignaturesAutomatically() {
+    void savingSealsOnlySignaturesGivenACertificate() {
         QTemporaryDir dir;
         const QString source = dir.filePath("lease.pdf");
         writeBasePdf(source, 1);
@@ -625,51 +627,39 @@ private slots:
         QImage red(60, 30, QImage::Format_ARGB32);
         red.fill(Qt::red);
         QCOMPARE(library.add("David", red), QString());
-
         Backend backend(nullptr, nullptr, &library, &settings);
         QVERIFY(backend.openUrl(QUrl::fromLocalFile(source)));
         QVERIFY(backend.placeSignature("David", 0, 300, 400) >= 0);
-
-        // An unbound signature with exactly one certificate signs with it
-        // automatically: always signed.
-        const QString target = dir.filePath("signed.pdf");
-        QVERIFY(backend.saveTo(target));
-        QVERIFY(backend.notice().contains(QStringLiteral("signed with")));
-        QCOMPARE(int(Poppler::Document::load(target)->signatures().size()), 1);
-
-        // An explicit binding points at the same place.
+        // A certificate exists, but nobody chose it for this signature: the
+        // seal is opt-in, so the copy saves unsigned.
+        QCOMPARE(Signer::certificates().size(), 1);
+        const QString unsealed = dir.filePath("unsealed.pdf");
+        QVERIFY(backend.saveTo(unsealed));
+        QCOMPARE(backend.notice(), QStringLiteral("Saved unsealed.pdf"));
+        QCOMPARE(int(Poppler::Document::load(unsealed)->signatures().size()), 0);
+        // Once chosen, it seals.
         settings.setValue("signatureKey/David", Signer::certificates().at(0).nickname);
-        const QString target2 = dir.filePath("signed-2.pdf");
-        QVERIFY(backend.saveTo(target2));
-        QVERIFY(backend.notice().contains(QStringLiteral("signed with")));
-        QCOMPARE(int(Poppler::Document::load(target2)->signatures().size()), 1);
+        const QString sealed = dir.filePath("sealed.pdf");
+        QVERIFY(backend.saveTo(sealed));
+        QVERIFY(backend.notice().contains(QStringLiteral("signed with Test User")));
+        QCOMPARE(int(Poppler::Document::load(sealed)->signatures().size()), 1);
     }
-
-    void ambiguousCertificatesSaveUnsignedWithNotice() {
-        QString second;
-        QCOMPARE(Signer::createCertificate(QStringLiteral("Other User"), QStringLiteral("Other Org"), &second), QString());
-        QVERIFY(!second.isEmpty());
-
+    void savingASignatureWithoutACertificateUnbindsIt() {
         QTemporaryDir dir;
-        const QString source = dir.filePath("lease.pdf");
-        writeBasePdf(source, 1);
         QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
         SignatureLibrary library(dir.filePath("signatures"));
-        QImage red(60, 30, QImage::Format_ARGB32);
-        red.fill(Qt::red);
-        QCOMPARE(library.add("David", red), QString());
-
         Backend backend(nullptr, nullptr, &library, &settings);
-        QVERIFY(backend.openUrl(QUrl::fromLocalFile(source)));
-        QVERIFY(backend.placeSignature("David", 0, 300, 400) >= 0);
-
-        // Two certificates and no binding: nobody can pick for you.
-        const QString target = dir.filePath("unsigned.pdf");
-        QVERIFY(backend.saveTo(target));
-        QVERIFY(backend.notice().contains(QStringLiteral("pick a certificate")));
-        QCOMPARE(int(Poppler::Document::load(target)->signatures().size()), 0);
+        settings.setValue("signatureKey/David", Signer::certificates().at(0).nickname);
+        QImage source(60, 30, QImage::Format_ARGB32);
+        source.fill(Qt::white);
+        QPainter(&source).fillRect(10, 10, 40, 10, Qt::black);
+        const QString path = dir.filePath("ink.png");
+        QVERIFY(source.save(path));
+        QVERIFY(backend.loadSignatureImage(path));
+        QCOMPARE(backend.saveSignature("David"), QString());
+        QCOMPARE(backend.signatureKey("David"), QString());
+        QCOMPARE(Signer::certificates().size(), 1);
     }
-
     void twoKeysOnOnePageSignTwice() {
         QString second;
         QCOMPARE(Signer::createCertificate(QStringLiteral("Other User"), QStringLiteral("Other Org"), &second), QString());
@@ -694,7 +684,13 @@ private slots:
 
         const QString target = dir.filePath("signed.pdf");
         QVERIFY(backend.saveTo(target));
-        QCOMPARE(int(Poppler::Document::load(target)->signatures().size()), 2);
+        std::unique_ptr<Poppler::Document> document = Poppler::Document::load(target);
+        const auto signatures = document->signatures();
+        QCOMPARE(int(signatures.size()), 2);
+        // The second pass appends to the file, so the first stays valid.
+        for (const auto &signature : signatures)
+            QCOMPARE(signature->validate(Poppler::FormFieldSignature::ValidateOptions()).signatureStatus(),
+                     Poppler::SignatureValidationInfo::SignatureValid);
     }
 
     void importingP12CertsAndSigningWithThem() {

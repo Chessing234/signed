@@ -70,9 +70,9 @@ public:
 
     Q_INVOKABLE void chooseSignatureImage();
     Q_INVOKABLE void setPreviewThreshold(qreal threshold);
-    // Saving a signature binds its certificate: the given one, or a fresh
-    // self-signed certificate when no id is given (Common Name = name,
-    // Organization = organization).
+    // Saving a signature can bind a certificate: an existing one by id, or
+    // "new" for a fresh self-signed one (Common Name = name, Organization =
+    // organization). No id means no certificate, and an unsigned copy.
     Q_INVOKABLE QString saveSignature(const QString &name, const QString &organization = {}, const QString &certId = {});
     Q_INVOKABLE void removeSignature(const QString &name);
     Q_INVOKABLE void clearNotice();

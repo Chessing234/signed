@@ -10,6 +10,7 @@
 #include <QTemporaryFile>
 
 #include <algorithm>
+#include <cstdio>
 
 #include <poppler-form.h>
 #include <poppler-qt6.h>
@@ -24,26 +25,37 @@ QString databaseDir() {
         + QStringLiteral("/signed/certificates");
 }
 
-// Point poppler's NSS backend at the app database, creating it first. NSS
-// keeps this state for the process, so it's set once.
-void ensureBackend() {
+bool hasDatabase() {
+    return QFileInfo::exists(databaseDir() + QStringLiteral("/key4.db"));
+}
+// Point poppler's NSS backend at the app database. NSS keeps this state for
+// the process, so it's set once. Nothing is written to disk until someone
+// asks for a certificate (create is true): a person who never uses one never
+// gets a database.
+QString ensureBackend(bool create) {
     static bool done = false;
     if (done)
-        return;
+        return {};
     const QString dir = databaseDir();
-    QDir().mkpath(dir);
-    if (!QFileInfo::exists(dir + QStringLiteral("/key4.db")))
-        QProcess::execute(QStringLiteral("certutil"), {QStringLiteral("-N"), QStringLiteral("-d"),
-                                                       QStringLiteral("sql:") + dir, QStringLiteral("--empty-password")});
+    if (!hasDatabase()) {
+        if (!create)
+            return QStringLiteral("there are no certificates yet");
+        QDir().mkpath(dir);
+        QProcess process;
+        process.start(QStringLiteral("certutil"), {QStringLiteral("-N"), QStringLiteral("-d"),
+                                                   QStringLiteral("sql:") + dir, QStringLiteral("--empty-password")});
+        if (!process.waitForFinished(30000) || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
+            return QStringLiteral("the certificate database couldn't be created (is nss installed?)");
+    }
     Poppler::setNSSDir(dir);
     Poppler::setActiveCryptoSignBackend(Poppler::CryptoSignBackend::NSS);
     done = true;
+    return {};
 }
-
 }
-
 QList<Certificate> certificates() {
-    ensureBackend();
+    if (!ensureBackend(false).isEmpty())
+        return {};
     QList<Certificate> out;
     const QVector<Poppler::CertificateInfo> certs = Poppler::getAvailableSigningCertificates();
     for (const Poppler::CertificateInfo &cert : certs) {
@@ -62,13 +74,14 @@ QString createCertificate(const QString &name, const QString &organization, QStr
         return QStringLiteral("A name is needed for the certificate.");
     const QString org = organization.trimmed().isEmpty() ? commonName : organization.trimmed();
 
-    ensureBackend();
+    if (const QString failure = ensureBackend(true); !failure.isEmpty())
+        return failure;
     const QString dir = databaseDir();
 
     // certutil needs a seed file for key generation; the nickname is a unique
     // id (the Common Name is what viewers show).
     QString noisePath;
-    QTemporaryFile noise(QStringLiteral("signed-noise-XXXXXX"));
+    QTemporaryFile noise(QDir::tempPath() + QStringLiteral("/signed-noise-XXXXXX"));
     if (noise.open()) {
         noise.write(QUuid::createUuid().toRfc4122() + QUuid::createUuid().toRfc4122());
         noisePath = noise.fileName();
@@ -106,19 +119,28 @@ QString createCertificate(const QString &name, const QString &organization, QStr
 
 QString importCertificate(const QString &path, const QString &password,
                           bool *needsPassword, QString *nickname) {
-    ensureBackend();
+    if (const QString failure = ensureBackend(true); !failure.isEmpty())
+        return failure;
 
     const QList<Certificate> before = certificates();
 
-    // ponytail: the password goes on the command line, visible in /proc for
-    // the moment the tool runs; pipe it through stdin if that ever matters.
+    // A password goes through a private file rather than the command line,
+    // where any process could read it from /proc while pk12util runs.
+    QTemporaryFile passwordFile;
+    QStringList passwordArgs{QStringLiteral("-W"), QString()};
+    if (!password.isEmpty()) {
+        if (!passwordFile.open())
+            return QStringLiteral("couldn't create a temporary file");
+        passwordFile.write(password.toUtf8());
+        passwordFile.close();
+        passwordArgs = {QStringLiteral("-w"), passwordFile.fileName()};
+    }
     QProcess process;
-    process.start(QStringLiteral("pk12util"), {
+    process.start(QStringLiteral("pk12util"), QStringList{
         QStringLiteral("-i"), path,
         QStringLiteral("-d"), QStringLiteral("sql:") + databaseDir(),
-        QStringLiteral("-W"), password,
         QStringLiteral("-K"), QString(),
-    });
+    } + passwordArgs);
     if (!process.waitForFinished(30000))
         return QStringLiteral("the certificate couldn't be imported.");
 
@@ -145,7 +167,8 @@ QString importCertificate(const QString &path, const QString &password,
 }
 
 Result sign(const QString &path, const QString &certNickname) {
-    ensureBackend();
+    if (const QString failure = ensureBackend(false); !failure.isEmpty())
+        return {false, false, failure};
 
     std::unique_ptr<Poppler::Document> document = Poppler::Document::load(path);
     if (!document)
@@ -196,9 +219,9 @@ Result sign(const QString &path, const QString &certNickname) {
         }
     }
 
-    // Swap the signed temp file into place.
-    QFile::remove(path);
-    if (!QFile::rename(tempName, path)) {
+    // Swap the signed temp file into place in one step, so a crash leaves
+    // either the unsigned copy or the signed one, never neither.
+    if (std::rename(QFile::encodeName(tempName).constData(), QFile::encodeName(path).constData()) != 0) {
         QFile::remove(tempName);
         return {false, false, QStringLiteral("the signed file couldn't replace the original")};
     }

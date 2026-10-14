@@ -6,7 +6,6 @@
 #include <QLocale>
 #include <QSet>
 
-#include <algorithm>
 
 #include <poppler-qt6.h>
 
@@ -158,32 +157,18 @@ bool Backend::saveTo(const QString &target) {
     emit dirtyChanged();
     emit saved();
 
-    // The cryptographic layer: every distinct certificate bound to a placed
-    // signature signs the copy, one pass each. A signature without a binding
-    // uses the single existing certificate; with several, someone has to pick
-    // first. A failure never loses the save.
-    const QList<Signer::Certificate> available = Signer::certificates();
-    const auto resolvable = [&available](const QString &id) {
-        return std::any_of(available.cbegin(), available.cend(),
-                           [&](const Signer::Certificate &cert) { return cert.nickname == id; });
-    };
+    // The cryptographic layer is opt-in: only a signature someone gave a
+    // certificate signs the copy, one pass per distinct certificate. A
+    // failure never loses the save.
     QSet<QString> boundKeys;
-    QString ambiguous;
     for (const Item &item : m_items.items()) {
         if (item.kind != Item::Signature)
             continue;
-        const QString name = m_signatureNames.value(item.imageId);
-        QString key = m_settings->value(QStringLiteral("signatureKey/") + name).toString();
-        if (!key.isEmpty() && !resolvable(key))
-            key.clear();  // a certificate that's gone behaves as unbound
-        if (key.isEmpty() && available.size() == 1)
-            key = available.first().nickname;
-        if (key.isEmpty())
-            ambiguous = name;
-        else
+        const QString key = m_settings->value(QStringLiteral("signatureKey/") + m_signatureNames.value(item.imageId)).toString();
+        if (!key.isEmpty())
             boundKeys.insert(key);
     }
-
+    const QList<Signer::Certificate> available = boundKeys.isEmpty() ? QList<Signer::Certificate>() : Signer::certificates();
     QString failure;
     bool cancelled = false;
     QStringList signedWith;
@@ -208,14 +193,14 @@ bool Backend::saveTo(const QString &target) {
         }
     }
 
-    if (!signedWith.isEmpty())
-        setNotice(QStringLiteral("Saved %1, signed with %2").arg(QFileInfo(target).fileName(), signedWith.join(QStringLiteral(", "))));
-    else if (cancelled)
+    // A failure outranks a partial success: a copy missing one of its
+    // certificates must say so.
+    if (cancelled)
         setNotice(QStringLiteral("Saved %1, but signing was cancelled.").arg(QFileInfo(target).fileName()));
     else if (!failure.isEmpty())
         setNotice(QStringLiteral("Saved %1, but signing failed: %2").arg(QFileInfo(target).fileName(), failure));
-    else if (!ambiguous.isEmpty())
-        setNotice(QStringLiteral("Saved %1, but pick a certificate for “%2” to sign it.").arg(QFileInfo(target).fileName(), ambiguous));
+    else if (!signedWith.isEmpty())
+        setNotice(QStringLiteral("Saved %1, signed with %2").arg(QFileInfo(target).fileName(), signedWith.join(QStringLiteral(", "))));
     else
         setNotice(result.warning.isEmpty() ? QStringLiteral("Saved %1").arg(QFileInfo(target).fileName()) : result.warning);
     return true;
@@ -326,11 +311,11 @@ QString Backend::saveSignature(const QString &name, const QString &organization,
     // A replaced signature should start at its new natural size.
     m_settings->remove("signatureWidth/" + name.trimmed());
 
-    // The dialog sends a certificate id, or empty for a fresh self-signed
-    // one made for this signature (Common Name = name, Organization =
-    // organization).
+    // The dialog sends a certificate id, "new" for a fresh self-signed one
+    // made for this signature (Common Name = name, Organization =
+    // organization), or nothing for no certificate at all.
     QString bound = certId;
-    if (bound.isEmpty()) {
+    if (bound == QLatin1String("new")) {
         const QString failure = Signer::createCertificate(name, organization, &bound);
         if (!failure.isEmpty())
             return failure;
@@ -383,6 +368,9 @@ void Backend::import(const QString &path, const QString &password) {
         m_pendingImport = path;
         emit certificateImportNeedsPassword();
     } else {
+        // A wrong password can be tried again.
+        if (!password.isEmpty())
+            m_pendingImport = path;
         emit certificateImportFailed(error);
     }
 }

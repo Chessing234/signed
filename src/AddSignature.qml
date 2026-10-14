@@ -5,7 +5,8 @@ import QtQuick.Layouts
 import QtQuick.Shapes
 
 // Turns a chosen picture into a named signature: shows the picture beside the
-// result with the paper removed, a threshold to tune it, and a name.
+// result with the paper removed, a threshold to tune it, a name, and an
+// optional digital seal.
 Rectangle {
     id: dialog
 
@@ -13,9 +14,13 @@ Rectangle {
     property color accentForeground: "black"
     property string error: ""
     property var certs: []             // the database's certificates: {id, name, organization}
-    property string certId: "new"      // "new" makes a fresh certificate for this signature on save
-    property bool certListOpen: false
+    property string certId: ""         // "" is no seal, "new" makes a certificate on save
     property string importError: ""
+    // The seal menu: off, the certificates there are, and the two ways to get
+    // another.
+    readonly property var certChoices: [{id: "", label: "None"}]
+        .concat(certs.map(cert => ({id: cert.id, label: cert.name + (cert.organization !== "" && cert.organization !== cert.name ? " · " + cert.organization : "")})))
+        .concat([{id: "new", label: "Create a certificate"}, {id: "import", label: "Import a .p12 file…"}])
     signal saved(string name)
 
     function open() {
@@ -25,9 +30,9 @@ Rectangle {
         backend.setPreviewThreshold(0.25);
         nameField.text = backend.previewName;
         orgField.clear();
-        certId = "new";
+        // Replacing a signature keeps its seal; a new one starts without.
+        refreshCerts(backend.signatureKey(backend.previewName));
         visible = true;
-        refreshCerts();
         nameField.forceActiveFocus();
         nameField.selectAll();
     }
@@ -35,16 +40,13 @@ Rectangle {
         visible = false;
     }
 
-    // The certificate is an explicit choice: a fresh one made for this
-    // signature on save, or an existing one picked from the list.
     function refreshCerts(preselect) {
         certs = backend.signingCertificates();
-        if (preselect !== undefined) {
-            certId = preselect;
-        } else if (certId !== "new" && !certs.some(cert => cert.id === certId)) {
-            certId = "new";  // a certificate that's gone falls back to a new one
-        }
-        certListOpen = false;
+        selectCert(certs.some(cert => cert.id === preselect) ? preselect : "");
+    }
+    function selectCert(id) {
+        certId = id;
+        certBox.currentIndex = certChoices.findIndex(choice => choice.id === id);
     }
     function save() {
         const name = nameField.text.trim();
@@ -53,7 +55,7 @@ Rectangle {
             error = invalid;
             return;
         }
-        const failure = backend.saveSignature(name, orgField.text.trim(), certId === "new" ? "" : certId);
+        const failure = backend.saveSignature(name, orgField.text.trim(), certId);
         if (failure !== "") {
             error = failure;
             return;
@@ -183,38 +185,6 @@ Rectangle {
                 onTextChanged: dialog.error = ""
                 onAccepted: dialog.save()
                 Keys.onEscapePressed: dialog.close()
-
-                // The Material floating label, but always visible (a
-                // placeholderText would only float up on focus).
-                Label {
-                    x: 12
-                    y: -9
-                    text: "Name"
-                    color: nameField.activeFocus ? dialog.accent : "#8e8e93"
-                    font.pixelSize: 11
-                    leftPadding: 4
-                    rightPadding: 4
-                    background: Rectangle { color: "#1c1c1e" }
-                }
-            }
-
-            TextField {
-                id: orgField
-                Layout.fillWidth: true
-                Layout.topMargin: 12
-                onAccepted: dialog.save()
-                Keys.onEscapePressed: dialog.close()
-
-                Label {
-                    x: 12
-                    y: -9
-                    text: "Organization"
-                    color: orgField.activeFocus ? dialog.accent : "#8e8e93"
-                    font.pixelSize: 11
-                    leftPadding: 4
-                    rightPadding: 4
-                    background: Rectangle { color: "#1c1c1e" }
-                }
             }
 
             Label {
@@ -225,187 +195,71 @@ Rectangle {
                 font.pixelSize: 12
             }
 
-            // A row stating which certificate this signature uses: a fresh
-            // one made on save (the default), or an existing one picked from
-            // the list, which also imports a .p12 from elsewhere.
-            ColumnLayout {
-                id: certBlock
-                Layout.fillWidth: true
+            // The digital seal is optional and starts off: most people only
+            // need the picture on the page, and a self-signed certificate makes
+            // some PDF viewers warn whoever opens the copy.
+            RowLayout {
                 Layout.topMargin: 14
-                spacing: 4
-
-                Rectangle {
-                    id: certRow
-                    Layout.fillWidth: true
-                    height: 56
-                    radius: 12
-                    border.color: dialog.certListOpen ? dialog.accent : "#5a5a5e"
-                    border.width: dialog.certListOpen ? 2 : 1
-                    color: "transparent"
-
-                    Label {
-                        anchors.fill: parent
-                        anchors.leftMargin: 14
-                        anchors.rightMargin: 150
-                        verticalAlignment: Text.AlignVCenter
-                        text: {
-                            const name = nameField.text.trim() !== "" ? nameField.text.trim() : "…";
-                            const org = orgField.text.trim();
-                            if (dialog.certId === "new")
-                                return name + (org !== "" ? " · " + org : "");
-                            const cert = dialog.certs.find(c => c.id === dialog.certId);
-                            return cert ? cert.name + (cert.organization !== "" && cert.organization !== cert.name ? " · " + cert.organization : "") : "…";
-                        }
-                        color: "white"
-                        font.pixelSize: 15
-                        elide: Text.ElideRight
-                    }
-                    Label {
-                        visible: dialog.certId === "new"
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.right: parent.right
-                        anchors.rightMargin: 44
-                        text: "created on save"
-                        color: "#8e8e93"
-                        font.pixelSize: 11
-                        background: Rectangle { color: "#2c2c2e"; radius: 999 }
-                        leftPadding: 8
-                        rightPadding: 8
-                        topPadding: 2
-                        bottomPadding: 2
-                    }
-                    Label {
-                        id: certInfo
-                        text: "ⓘ"
-                        color: certInfoHover.hovered ? "white" : "#8e8e93"
-                        font.pixelSize: 15
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.right: parent.right
-                        anchors.rightMargin: 10
-
-                        HoverHandler { id: certInfoHover }
-                        ToolTip.visible: certInfoHover.hovered
-                        ToolTip.delay: 200
-                        ToolTip.text: "This certificate cryptographically seals every copy you save, so any later change to the file is detectable. Self-signed, so it proves the file wasn't touched, not that you are you (not QES)."
-                    }
-
-                    Label {
-                        x: 12
-                        y: -9
-                        text: "Certificate"
-                        color: dialog.certListOpen ? dialog.accent : "#8e8e93"
-                        font.pixelSize: 11
-                        leftPadding: 4
-                        rightPadding: 4
-                        background: Rectangle { color: "#1c1c1e" }
-                    }
-                }
-
-                Label {
-                    visible: dialog.importError !== ""
-                    text: dialog.importError
-                    color: dialog.accent
-                    font.pixelSize: 12
-                    wrapMode: Text.Wrap
-                    Layout.fillWidth: true
-                }
-
-                Label {
-                    text: dialog.certListOpen ? "Close list"
-                        : (dialog.certs.length === 0 ? "More options…" : "Change…")
-                    color: "#b8b8bc"
-                    font.pixelSize: 13
-                    textFormat: Text.RichText
-                    font.underline: true
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: dialog.certListOpen = !dialog.certListOpen
-                    }
-                }
+                Layout.fillWidth: true
+                spacing: 12
 
                 ColumnLayout {
-                    visible: dialog.certListOpen
                     Layout.fillWidth: true
                     spacing: 2
-
-                    Repeater {
-                        // The first entry switches back to a fresh certificate.
-                        model: [{id: "new", name: "Create a new certificate", organization: ""}].concat(dialog.certs)
-
-                        delegate: Item {
-                            id: certChoice
-
-                            required property int index
-                            required property var modelData
-
-                            Layout.fillWidth: true
-                            height: 36
-
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: 7
-                                color: certChoiceMouse.containsMouse ? "#3a3a3d" : "transparent"
-                            }
-                            Label {
-                                anchors.fill: parent
-                                anchors.leftMargin: 12
-                                verticalAlignment: Text.AlignVCenter
-                                text: certChoice.modelData.name + (certChoice.modelData.organization !== "" && certChoice.modelData.organization !== certChoice.modelData.name ? " · " + certChoice.modelData.organization : "")
-                                color: certChoice.modelData.id === dialog.certId ? dialog.accent : "white"
-                                font.pixelSize: 14
-                            }
-                            Label {
-                                anchors.verticalCenter: parent.verticalCenter
-                                anchors.right: parent.right
-                                anchors.rightMargin: 12
-                                visible: certChoice.modelData.id === dialog.certId
-                                text: "✓"
-                                color: dialog.accent
-                                font.pixelSize: 14
-                            }
-                            MouseArea {
-                                id: certChoiceMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    dialog.certId = certChoice.modelData.id;
-                                    dialog.certListOpen = false;
-                                }
-                            }
-                        }
-                    }
-
-                    // Importing joins the list: pick a file, and its password
-                    // is asked for only when the file turns out protected.
-                    Item {
+                    Label { Layout.fillWidth: true; text: "Digital seal"; color: "white"; font.pixelSize: 13 }
+                    Label {
                         Layout.fillWidth: true
-                        height: 36
-
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: 7
-                            color: importRowMouse.containsMouse ? "#3a3a3d" : "transparent"
-                        }
-                        Label {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            verticalAlignment: Text.AlignVCenter
-                            text: "Import from a .p12 file…"
-                            color: "white"
-                            font.pixelSize: 14
-                        }
-                        MouseArea {
-                            id: importRowMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: backend.importCertificate()
+                        visible: dialog.certId !== ""
+                        text: "Saved copies are sealed, so any later change shows. Self-signed: it proves the file wasn't altered, not who signed it."
+                        color: "#8e8e93"
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
+                    }
+                }
+                ComboBox {
+                    id: certBox
+                    Layout.preferredWidth: 250
+                    Material.roundedScale: theme.radius
+                    textRole: "label"
+                    valueRole: "id"
+                    model: dialog.certChoices
+                    // The same panel as the Signature menu.
+                    popup.background: Rectangle {
+                        color: "#1c1c1e"
+                        radius: theme.radius
+                        border.color: "#3a3a3c"
+                    }
+                    onActivated: {
+                        const id = currentValue;
+                        if (id === "import") {
+                            backend.importCertificate();
+                            dialog.selectCert(dialog.certId);  // stays put until the import lands
+                        } else {
+                            dialog.certId = id;
                         }
                     }
                 }
+            }
+
+            TextField {
+                id: orgField
+                visible: dialog.certId === "new"
+                Layout.fillWidth: true
+                Layout.topMargin: 10
+                placeholderText: "Organization on the certificate (optional)"
+                Material.roundedScale: theme.radius
+                onAccepted: dialog.save()
+                Keys.onEscapePressed: dialog.close()
+            }
+
+            Label {
+                Layout.topMargin: 4
+                visible: dialog.importError !== ""
+                text: dialog.importError
+                color: dialog.accent
+                font.pixelSize: 12
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
             }
 
             RowLayout {
@@ -466,7 +320,7 @@ Rectangle {
             anchors.centerIn: parent
             width: 420
             height: pwLayout.implicitHeight + 48
-            radius: 14
+            radius: theme.radius
             color: "#1c1c1e"
 
             ColumnLayout {
@@ -491,6 +345,7 @@ Rectangle {
                     Layout.fillWidth: true
                     placeholderText: "Password"
                     echoMode: TextInput.Password
+                    Material.roundedScale: theme.radius
                     onAccepted: passwordDialog.accept()
                     Keys.onEscapePressed: passwordDialog.cancel()
                 }
@@ -530,7 +385,12 @@ Rectangle {
     Connections {
         target: backend
         function onCertificateImportNeedsPassword() { passwordDialog.open(); }
-        function onCertificateImportFailed(message) { dialog.importError = message; }
-        function onCertificateImported(nickname) { dialog.refreshCerts(nickname); }
+        function onCertificateImportFailed(message) {
+            if (passwordDialog.visible)
+                passwordDialog.error = "That password didn't open the file.";
+            else
+                dialog.importError = message;
+        }
+        function onCertificateImported(nickname) { passwordDialog.visible = false; dialog.importError = ""; dialog.refreshCerts(nickname); }
     }
 }
