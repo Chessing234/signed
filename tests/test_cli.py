@@ -121,6 +121,11 @@ class CliTests(unittest.TestCase):
         for output in (self.pdf, 'link.pdf', 'notes.txt'):
             self.signed('render', self.pdf, '--page', '1', '-o', output, code=1)
         self.assertEqual(self.pdf.read_bytes(), original)
+        # A hard link looks like a different file, so the PNG replaces the link instead.
+        os.link(self.pdf, self.root / 'alias.png')
+        self.signed('render', self.pdf, '--page', '1', '-o', 'alias.png')
+        self.assertEqual(self.pdf.read_bytes(), original)
+        self.assertEqual((self.root / 'alias.png').read_bytes()[:4], b'\x89PNG')
         self.assertFalse((self.root / 'notes.txt').exists())
 
     def test_render(self):

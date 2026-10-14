@@ -329,7 +329,10 @@ int render(const QStringList &arguments) {
         if (samePath(path, command.argument(1)))
             return fail("Render to a new file; the PDF stays as it is.");
         QDir().mkpath(QFileInfo(path).absolutePath());
-        if (!image.save(path, "PNG"))
+        // Written beside the target and renamed into place, so even a hard
+        // link to the PDF is replaced rather than written through.
+        QSaveFile file(path);
+        if (!file.open(QIODevice::WriteOnly) || !image.save(&file, "PNG") || !file.commit())
             return fail("Could not save " + path);
         list << QJsonObject{{"page", i + 1}, {"image", QFileInfo(path).absoluteFilePath()},
                             {"width", image.width()}, {"height", image.height()},
