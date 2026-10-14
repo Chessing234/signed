@@ -85,7 +85,7 @@ class CliTests(unittest.TestCase):
         self.assertTrue(Path(saved['path']).is_file())
         self.assertIn('--replace', self.signed('add-signature', 'Alex Morgan', 'photo.png', code=1).stderr)
         self.signed('add-signature', 'Alex Morgan', 'photo.png', '--replace', '--threshold', '0.4')
-        self.signed('remove-signature', 'Alex Morgan')
+        self.assertEqual(self.json('remove-signature', 'Alex Morgan'), {'removed': 'Alex Morgan'})
         self.assertEqual(self.json('signatures')['signatures'], [])
         self.signed('remove-signature', 'Alex Morgan', code=1)
         self.signed('add-signature', '../escape', 'photo.png', code=1)
@@ -99,6 +99,29 @@ class CliTests(unittest.TestCase):
         # PDF space counts up from the bottom; these points count down from the top.
         self.assertAlmostEqual(line['y'] + line['height'], 792 - 580, delta=4)
         self.signed('text', self.pdf, '--page', '3', code=1)
+
+    def test_changing_a_signature_forgets_its_size(self):
+        self.add_signature()
+        settings = self.root / 'config/signed/signed.conf'
+        settings.parent.mkdir(parents=True)
+        settings.write_text('[signatureWidth]\nAlex%20Morgan=300\n')
+        item = json.dumps({'signature': 'Alex Morgan', 'page': 1, 'x': 10, 'y': 10})
+        width = lambda: self.json('sign', self.pdf, 'out.pdf', '--item', item, '--force')['items'][0]['width']
+        self.assertEqual(width(), 300)
+        self.signed('add-signature', 'Alex Morgan', 'photo.png', '--replace')
+        self.assertEqual(width(), 108)
+        settings.write_text('[signatureWidth]\nAlex%20Morgan=300\n')
+        self.signed('remove-signature', 'Alex Morgan')
+        self.add_signature()
+        self.assertEqual(width(), 108)
+
+    def test_render_never_writes_over_the_pdf(self):
+        original = self.pdf.read_bytes()
+        (self.root / 'link.pdf').symlink_to(self.pdf)
+        for output in (self.pdf, 'link.pdf', 'notes.txt'):
+            self.signed('render', self.pdf, '--page', '1', '-o', output, code=1)
+        self.assertEqual(self.pdf.read_bytes(), original)
+        self.assertFalse((self.root / 'notes.txt').exists())
 
     def test_render(self):
         page = self.json('render', self.pdf, '--page', '1', '--width', '612', '--grid', '-o', 'one.png')['pages'][0]
@@ -130,21 +153,29 @@ class CliTests(unittest.TestCase):
         self.assertIn('new name', self.signed('sign', self.pdf, self.pdf, '--items', 'items.json', code=1).stderr)
 
     def test_sign_reports_every_problem(self):
+        self.add_signature()
         errors = self.signed('sign', self.pdf, 'out.pdf',
                              '--item', '{"signature": "Nobody", "page": 1, "x": 0, "y": 0}',
                              '--item', '{"text": "x", "page": 3, "x": 0, "y": 0}',
                              '--item', '{"text": "wide", "page": 1, "x": 600, "y": 0}',
-                             '--item', '{"text": "x", "page": 1, "x": 0}', code=1).stderr.splitlines()
-        self.assertEqual(len(errors), 4, errors)
+                             '--item', '{"text": "x", "page": 1, "x": 0}',
+                             '--item', '{"signature": "Alex Morgan", "page": 1, "x": 0, "y": 0, "width": "160"}',
+                             '--item', '{"text": 5, "page": 1, "x": 0, "y": 0}', code=1).stderr.splitlines()
+        self.assertEqual(len(errors), 6, errors)
         self.assertIn('Nobody', errors[0])
         self.assertIn('page 3 does not exist', errors[1])
         self.assertIn('past the page', errors[2])
         self.assertIn('"bottom"', errors[3])
+        self.assertIn('"width" must be a number', errors[4])
+        self.assertIn('"text" must be a string', errors[5])
         self.assertFalse((self.root / 'out.pdf').exists())
 
     def test_skill_install(self):
         (self.root / 'home/.claude').mkdir(parents=True)
-        self.signed('skill', 'install')
+        self.assertIn('name: signed', self.json('skill')['skill'])
+        result = self.json('skill', 'install')
+        self.assertTrue(result['installed'].endswith('.agents/skills/signed/SKILL.md'))
+        self.assertTrue(result['linked'].endswith('.claude/skills/signed'))
         installed = self.root / 'home/.agents/skills/signed/SKILL.md'
         self.assertIn('name: signed', installed.read_text())
         self.assertEqual((self.root / 'home/.claude/skills/signed/SKILL.md').read_text(), installed.read_text())

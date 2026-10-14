@@ -35,6 +35,13 @@ int fail(const QString &message) {
 }
 QString points(qreal value) { return QString::number(value, 'f', 1); }
 
+bool samePath(const QString &a, const QString &b) {
+    const QFileInfo left(a), right(b);
+    if (left.exists() && right.exists())
+        return left.canonicalFilePath() == right.canonicalFilePath();
+    return left.absoluteFilePath() == right.absoluteFilePath();
+}
+
 struct Command {
     QCommandLineParser parser;
     Command(const QString &name, const QString &description, const QString &argument = {},
@@ -147,6 +154,8 @@ int addSignature(const QStringList &arguments) {
     error = library.add(name, ink);
     if (!error.isEmpty())
         return fail(error);
+    // A new image starts from the default size, as it does in the app.
+    QSettings().remove("signatureWidth/" + name);
     const QString saved = QDir(library.directory()).filePath(name + ".png");
     if (command.isJson())
         print({{"name", name}, {"path", saved}, {"width", ink.width()}, {"height", ink.height()}});
@@ -158,6 +167,7 @@ int addSignature(const QStringList &arguments) {
 int removeSignature(const QStringList &arguments) {
     Command command("remove-signature", "Delete a saved signature. Documents already signed with it keep it.",
                     "name", "Name of the signature");
+    command.json();
     command.parser.process(arguments);
     SignatureLibrary library;
     const QString name = command.argument(1).trimmed();
@@ -165,7 +175,11 @@ int removeSignature(const QStringList &arguments) {
         return fail("There's no signature named “" + name + "”. See: signed signatures");
     if (!library.remove(name))
         return fail("Couldn't remove “" + name + "”.");
-    print(stdout, "Removed “" + name + "”");
+    QSettings().remove("signatureWidth/" + name);
+    if (command.isJson())
+        print({{"removed", name}});
+    else
+        print(stdout, "Removed “" + name + "”");
     return 0;
 }
 
@@ -310,6 +324,10 @@ int render(const QStringList &arguments) {
         QString path = single ? (output.isEmpty() ? name : output) : QDir(output).filePath(name);
         if (single && QFileInfo(path).isDir())
             path = QDir(path).filePath(name);
+        if (!path.endsWith(".png", Qt::CaseInsensitive))
+            return fail("Name an output ending in .png, or a directory.");
+        if (samePath(path, command.argument(1)))
+            return fail("Render to a new file; the PDF stays as it is.");
         QDir().mkpath(QFileInfo(path).absolutePath());
         if (!image.save(path, "PNG"))
             return fail("Could not save " + path);
@@ -373,6 +391,9 @@ QString readPlacement(const QJsonValue &value, int index, const QList<QSizeF> &s
             return item + ": there's no signature named “" + placement->name + "”. See: signed signatures";
         const qreal aspect = qreal(image.height()) / image.width();
         qreal width = 0, height = 0;
+        for (const char *key : {"width", "height"})
+            if (object.contains(key) && !object.value(key).isDouble())
+                return item + QString(": \"%1\" must be a number of points.").arg(key);
         if (number(object, "width", &width))
             size = QSizeF(width, width * aspect);
         else if (number(object, "height", &height))
@@ -386,6 +407,8 @@ QString readPlacement(const QJsonValue &value, int index, const QList<QSizeF> &s
             return item + QString(": a signature must be at least %1 points wide.").arg(MinimumSignatureWidth);
         placement->stamp.image = image;
     } else {
+        if (object.contains("text") && !object.value("text").isString())
+            return item + ": \"text\" must be a string.";
         placement->kind = isDate && !object.contains("text") ? "date" : "text";
         placement->stamp.text = object.contains("text") ? object.value("text").toString() : Backend::currentDate();
         if (placement->stamp.text.trimmed().isEmpty())
@@ -410,13 +433,6 @@ QString readPlacement(const QJsonValue &value, int index, const QList<QSizeF> &s
                           .arg(page)
                           .arg(points(pageSize.width()), points(pageSize.height()));
     return {};
-}
-
-bool samePath(const QString &a, const QString &b) {
-    const QFileInfo left(a), right(b);
-    if (left.exists() && right.exists())
-        return left.canonicalFilePath() == right.canonicalFilePath();
-    return left.absoluteFilePath() == right.absoluteFilePath();
 }
 
 int sign(const QStringList &arguments) {
@@ -521,13 +537,17 @@ int skill(const QStringList &arguments) {
     Command command("skill", "Print the agent skill, or install it for your coding agents with: skill install.");
     command.parser.addPositionalArgument("install", "Copy to ~/.agents/skills/signed and link into ~/.claude/skills",
                                          "[install]");
+    command.json();
     command.parser.process(arguments);
     QFile bundled(":/skill.md");
     if (!bundled.open(QIODevice::ReadOnly))
         return 1;
     const QByteArray text = bundled.readAll();
     if (command.argument(1).isEmpty()) {
-        fputs(text.constData(), stdout);
+        if (command.isJson())
+            print({{"skill", QString::fromUtf8(text)}});
+        else
+            fputs(text.constData(), stdout);
         return 0;
     }
     if (command.argument(1) != "install")
@@ -537,9 +557,16 @@ int skill(const QStringList &arguments) {
     QSaveFile file(directory + "/SKILL.md");
     if (!QDir().mkpath(directory) || !file.open(QIODevice::WriteOnly) || file.write(text) < 0 || !file.commit())
         return fail("Could not write " + file.fileName());
-    print(stdout, "Installed " + file.fileName());
-    if (!home.exists(".claude"))
+    QJsonObject result{{"installed", file.fileName()}};
+    auto done = [&] {
+        if (command.isJson())
+            print(result);
         return 0;
+    };
+    if (!command.isJson())
+        print(stdout, "Installed " + file.fileName());
+    if (!home.exists(".claude"))
+        return done();
     const QString link = home.filePath(".claude/skills/signed");
     const QFileInfo existing(link);
     if (existing.isSymLink())
@@ -548,8 +575,10 @@ int skill(const QStringList &arguments) {
         return fail(link + " exists and is not a link; leaving it alone.");
     if (!home.mkpath(".claude/skills") || !QFile::link("../../.agents/skills/signed", link))
         return fail("Could not link " + link);
-    print(stdout, "Linked " + link);
-    return 0;
+    result.insert("linked", link);
+    if (!command.isJson())
+        print(stdout, "Linked " + link);
+    return done();
 }
 
 int help(const QStringList &arguments) {
