@@ -4,11 +4,14 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QLocale>
+#include <QSet>
+
 
 #include <poppler-qt6.h>
 
 #include "filepicker.h"
 #include "pageprovider.h"
+#include "signer.h"
 #include "stamper.h"
 
 namespace {
@@ -34,6 +37,10 @@ Backend::Backend(FilePicker *picker, PageProvider *pages, SignatureLibrary *sign
         connect(m_picker, &FilePicker::imageSelected, this, [this](const QUrl &url) {
             m_settings->setValue("imageFolder", QFileInfo(url.toLocalFile()).absolutePath());
             loadSignatureImage(url.toLocalFile());
+        });
+        connect(m_picker, &FilePicker::p12Selected, this, [this](const QUrl &url) {
+            m_settings->setValue("certFolder", QFileInfo(url.toLocalFile()).absolutePath());
+            import(url.toLocalFile(), QString());
         });
         connect(m_picker, &FilePicker::saveSelected, this, [this](const QUrl &url) { saveTo(url.toLocalFile()); });
         connect(m_picker, &FilePicker::failed, this, &Backend::setNotice);
@@ -148,8 +155,54 @@ bool Backend::saveTo(const QString &target) {
     }
     m_savedRevision = revision;
     emit dirtyChanged();
-    setNotice(result.warning.isEmpty() ? QStringLiteral("Saved %1").arg(QFileInfo(target).fileName()) : result.warning);
     emit saved();
+
+    // The cryptographic layer is opt-in: only a signature someone gave a
+    // certificate signs the copy, one pass per distinct certificate. A
+    // failure never loses the save.
+    QSet<QString> boundKeys;
+    for (const Item &item : m_items.items()) {
+        if (item.kind != Item::Signature)
+            continue;
+        const QString key = m_settings->value(QStringLiteral("signatureKey/") + m_signatureNames.value(item.imageId)).toString();
+        if (!key.isEmpty())
+            boundKeys.insert(key);
+    }
+    const QList<Signer::Certificate> available = boundKeys.isEmpty() ? QList<Signer::Certificate>() : Signer::certificates();
+    QString failure;
+    bool cancelled = false;
+    QStringList signedWith;
+    if (!boundKeys.isEmpty()) {
+        QStringList ids = boundKeys.values();
+        ids.sort();
+        for (const QString &id : ids) {
+            QString description = id;
+            for (const Signer::Certificate &cert : available) {
+                if (cert.nickname != id)
+                    continue;
+                description = cert.commonName.isEmpty() ? cert.nickname : cert.commonName;
+                break;
+            }
+            const Signer::Result outcome = Signer::sign(target, id);
+            if (!outcome.ok) {
+                failure = outcome.error;
+                cancelled = outcome.cancelled;
+                break;
+            }
+            signedWith.append(description);
+        }
+    }
+
+    // A failure outranks a partial success: a copy missing one of its
+    // certificates must say so.
+    if (cancelled)
+        setNotice(QStringLiteral("Saved %1, but signing was cancelled.").arg(QFileInfo(target).fileName()));
+    else if (!failure.isEmpty())
+        setNotice(QStringLiteral("Saved %1, but signing failed: %2").arg(QFileInfo(target).fileName(), failure));
+    else if (!signedWith.isEmpty())
+        setNotice(QStringLiteral("Saved %1, signed with %2").arg(QFileInfo(target).fileName(), signedWith.join(QStringLiteral(", "))));
+    else
+        setNotice(result.warning.isEmpty() ? QStringLiteral("Saved %1").arg(QFileInfo(target).fileName()) : result.warning);
     return true;
 }
 
@@ -251,12 +304,26 @@ QImage Backend::previewImage(const QString &which) const {
     return which.startsWith(QLatin1String("source")) ? m_previewSource : m_preview;
 }
 
-QString Backend::saveSignature(const QString &name) {
+QString Backend::saveSignature(const QString &name, const QString &organization, const QString &certId) {
     const QString error = m_signatures->add(name, m_preview);
     if (!error.isEmpty())
         return error;
     // A replaced signature should start at its new natural size.
     m_settings->remove("signatureWidth/" + name.trimmed());
+
+    // The dialog sends a certificate id, "new" for a fresh self-signed one
+    // made for this signature (Common Name = name, Organization =
+    // organization), or nothing for no certificate at all.
+    QString bound = certId;
+    if (bound == QLatin1String("new")) {
+        const QString failure = Signer::createCertificate(name, organization, &bound);
+        if (!failure.isEmpty())
+            return failure;
+    }
+    if (bound.isEmpty())
+        m_settings->remove("signatureKey/" + name.trimmed());
+    else
+        m_settings->setValue("signatureKey/" + name.trimmed(), bound);
     m_settings->setValue("lastSignature", name.trimmed());
     emit lastSignatureChanged();
     m_previewSource = {};
@@ -269,5 +336,56 @@ QString Backend::saveSignature(const QString &name) {
 void Backend::removeSignature(const QString &name) {
     m_signatures->remove(name);
     m_settings->remove("signatureWidth/" + name);
+    m_settings->remove("signatureKey/" + name);
     emit lastSignatureChanged();
+}
+
+void Backend::importCertificate() {
+    if (m_picker)
+        m_picker->openCertificate(m_settings->value("certFolder").toString());
+}
+
+void Backend::importCertificatePassword(const QString &password) {
+    // copy: import() clears m_pendingImport, which would reach this string
+    const QString path = m_pendingImport;
+    import(path, password);
+}
+
+void Backend::cancelImport() {
+    m_pendingImport.clear();
+}
+
+void Backend::import(const QString &path, const QString &password) {
+    if (path.isEmpty())
+        return;
+    m_pendingImport.clear();
+    bool needsPassword = false;
+    QString nickname;
+    const QString error = Signer::importCertificate(path, password, &needsPassword, &nickname);
+    if (error.isEmpty()) {
+        emit certificateImported(nickname);
+    } else if (needsPassword) {
+        m_pendingImport = path;
+        emit certificateImportNeedsPassword();
+    } else {
+        // A wrong password can be tried again.
+        if (!password.isEmpty())
+            m_pendingImport = path;
+        emit certificateImportFailed(error);
+    }
+}
+
+QVariantList Backend::signingCertificates() const {
+    QVariantList out;
+    for (const Signer::Certificate &cert : Signer::certificates())
+        out.append(QVariantMap{
+            {"id", cert.nickname},
+            {"name", cert.commonName},
+            {"organization", cert.organization},
+        });
+    return out;
+}
+
+QString Backend::signatureKey(const QString &name) const {
+    return m_settings->value("signatureKey/" + name).toString();
 }

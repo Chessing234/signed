@@ -17,11 +17,15 @@ Built with **Qt Quick (QML)** and the Material style, **poppler** to show pages,
 
 The original PDF is never changed, and Signed won't save over it. The signed copy keeps the original pages exactly as they were — text stays selectable, nothing is re-rendered — with your signatures and text laid on top. Placed items stay editable until you close the PDF, so you can fix something and save again.
 
+If you give a signature a digital seal (see below), the saved copy is also cryptographically signed: an invisible PKCS#7 signature covering the whole document, the kind every PDF viewer understands. Signatures without one save as before.
+
 ## Signatures
 
 Choose **Add signature…** in the Signature menu, or drop an image on the window. Use a scan or a well-lit photo of your signature on white paper: Signed removes the paper, keeps the ink (blue stays blue), and crops to it. Slide **Paper threshold** toward *More* if shadows show up, or toward *Less* if faint strokes disappear. PNGs that are already transparent are used as they are. Give it a name like "David" or "Initials".
 
 Signatures are saved as PNGs in `~/.local/share/signed/signatures/` (under `$XDG_DATA_HOME` if set), named after the signature. Deleting one from the menu doesn't affect anything already placed.
+
+A signature can also carry a **digital seal**, off by default. Pick **Create a certificate** under Digital seal when adding the signature (with an optional organization), choose one you already have, or **Import a .p12 file…** from elsewhere (its password is asked once and never stored). The certificates are self-signed and passwordless, in `~/.local/share/signed/certificates/`, so sealing never prompts but anyone using this computer can seal with them. A self-signed seal proves the file wasn't changed after you saved it, not who signed it, and some PDF viewers warn that its signer is unknown.
 
 ## Use Signed from the command line
 
@@ -71,10 +75,12 @@ Letter keys do nothing while you're typing.
 - Password-protected PDFs can't be opened.
 - Form fields aren't filled in as fields; place text over them instead.
 - Signatures come from images; there's no drawing with the mouse.
+- A self-signed signature certificate is cryptographically verifiable but not a qualified electronic signature (QES).
 
 ## Requirements
 
 - `poppler-qt6` and `qpdf`
+- `nss` (certificate database and creation; poppler pulls it in anyway)
 - `noto-fonts` (text is set in Noto Sans and embedded in the PDF)
 - `xdg-desktop-portal` and a portal backend for the file picker
 

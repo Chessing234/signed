@@ -3,10 +3,12 @@
 #include <QImageWriter>
 #include <QSettings>
 #include <QPainter>
+#include <QProcess>
 #include <QPdfWriter>
 #include <QTemporaryDir>
 #include <QtTest>
 
+#include <poppler-form.h>
 #include <poppler-qt6.h>
 #include <qpdf/QPDF.hh>
 #include <qpdf/QPDFPageDocumentHelper.hh>
@@ -16,6 +18,7 @@
 #include "backend.h"
 #include "items.h"
 #include "signatures.h"
+#include "signer.h"
 #include "stamper.h"
 #include "textlayout.h"
 #include "theme.h"
@@ -102,7 +105,23 @@ bool near(const QRect &actual, const QRect &expected) {
 class SignedTests : public QObject {
     Q_OBJECT
 
+    // Everything crypto in these tests happens in a throwaway certificate
+    // database, never the user's real one: XDG_DATA_HOME is redirected before
+    // any Signer call, which is where the app's NSS database lives.
+    QTemporaryDir dataHome;
+
 private slots:
+    void initTestCase() {
+        QVERIFY(dataHome.isValid());
+        QVERIFY(QDir(dataHome.path()).mkpath("data"));
+        qputenv("XDG_DATA_HOME", QDir(dataHome.path()).filePath("data").toLocal8Bit());
+    }
+
+    void keyringStartsEmptyAndUnwritten() {
+        QVERIFY(Signer::certificates().isEmpty());
+        // Looking isn't asking: no database appears until a certificate does.
+        QVERIFY(!QFileInfo::exists(QDir(dataHome.path()).filePath("data/signed/certificates")));
+    }
     void themeFallsBack() {
         QTemporaryDir dir;
         Theme theme(dir.path());
@@ -560,6 +579,156 @@ private slots:
         SignatureLibrary library(QTemporaryDir().filePath("x"));
         Backend backend(nullptr, nullptr, &library, &settings);
         QVERIFY(backend.today().contains(QString::number(QDate::currentDate().year())));
+    }
+
+    void createdKeySignsAndVerifies() {
+        QString nickname;
+        QCOMPARE(Signer::createCertificate(QStringLiteral("Test User"), QString(), &nickname), QString());
+        QVERIFY(!nickname.isEmpty());
+        const QList<Signer::Certificate> certs = Signer::certificates();
+        QCOMPARE(certs.size(), 1);
+        QCOMPARE(certs.at(0).nickname, nickname);
+        QCOMPARE(certs.at(0).commonName, QStringLiteral("Test User"));
+        QCOMPARE(certs.at(0).organization, QStringLiteral("Test User"));
+
+        QTemporaryDir dir;
+        const QString source = dir.filePath("lease.pdf");
+        writeBasePdf(source, 1);
+        Stamp stamp;
+        stamp.page = 0;
+        stamp.rect = QRectF(100, 200, 120, 60);
+        stamp.image = ring(Qt::red, 30);
+        const QString target = dir.filePath("signed.pdf");
+        QVERIFY(Stamper::stamp(source, target, {stamp}).error.isEmpty());
+
+        // The signature is invisible: signing changes nothing on the page.
+        const QImage before = render(target, 0);
+        const Signer::Result result = Signer::sign(target, nickname);
+        if (!result.ok)
+            QFAIL(qPrintable(QStringLiteral("signing failed: %1").arg(result.error)));
+        QCOMPARE(render(target, 0), before);
+
+        std::unique_ptr<Poppler::Document> document = Poppler::Document::load(target);
+        QVERIFY(document);
+        const auto signatures = document->signatures();
+        QCOMPARE(signatures.size(), 1);
+        QCOMPARE(signatures.at(0)->signatureType(), Poppler::FormFieldSignature::AdbePkcs7detached);
+        const Poppler::SignatureValidationInfo info =
+            signatures.at(0)->validate(Poppler::FormFieldSignature::ValidateOptions());
+        QCOMPARE(info.signatureStatus(), Poppler::SignatureValidationInfo::SignatureValid);
+    }
+
+    void savingSealsOnlySignaturesGivenACertificate() {
+        QTemporaryDir dir;
+        const QString source = dir.filePath("lease.pdf");
+        writeBasePdf(source, 1);
+        QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        SignatureLibrary library(dir.filePath("signatures"));
+        QImage red(60, 30, QImage::Format_ARGB32);
+        red.fill(Qt::red);
+        QCOMPARE(library.add("David", red), QString());
+        Backend backend(nullptr, nullptr, &library, &settings);
+        QVERIFY(backend.openUrl(QUrl::fromLocalFile(source)));
+        QVERIFY(backend.placeSignature("David", 0, 300, 400) >= 0);
+        // A certificate exists, but nobody chose it for this signature: the
+        // seal is opt-in, so the copy saves unsigned.
+        QCOMPARE(Signer::certificates().size(), 1);
+        const QString unsealed = dir.filePath("unsealed.pdf");
+        QVERIFY(backend.saveTo(unsealed));
+        QCOMPARE(backend.notice(), QStringLiteral("Saved unsealed.pdf"));
+        QCOMPARE(int(Poppler::Document::load(unsealed)->signatures().size()), 0);
+        // Once chosen, it seals.
+        settings.setValue("signatureKey/David", Signer::certificates().at(0).nickname);
+        const QString sealed = dir.filePath("sealed.pdf");
+        QVERIFY(backend.saveTo(sealed));
+        QVERIFY(backend.notice().contains(QStringLiteral("signed with Test User")));
+        QCOMPARE(int(Poppler::Document::load(sealed)->signatures().size()), 1);
+    }
+    void savingASignatureWithoutACertificateUnbindsIt() {
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        SignatureLibrary library(dir.filePath("signatures"));
+        Backend backend(nullptr, nullptr, &library, &settings);
+        settings.setValue("signatureKey/David", Signer::certificates().at(0).nickname);
+        QImage source(60, 30, QImage::Format_ARGB32);
+        source.fill(Qt::white);
+        QPainter(&source).fillRect(10, 10, 40, 10, Qt::black);
+        const QString path = dir.filePath("ink.png");
+        QVERIFY(source.save(path));
+        QVERIFY(backend.loadSignatureImage(path));
+        QCOMPARE(backend.saveSignature("David"), QString());
+        QCOMPARE(backend.signatureKey("David"), QString());
+        QCOMPARE(Signer::certificates().size(), 1);
+    }
+    void twoKeysOnOnePageSignTwice() {
+        QString second;
+        QCOMPARE(Signer::createCertificate(QStringLiteral("Other User"), QStringLiteral("Other Org"), &second), QString());
+        QVERIFY(!second.isEmpty());
+
+        QTemporaryDir dir;
+        const QString source = dir.filePath("lease.pdf");
+        writeBasePdf(source, 1);
+        QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        SignatureLibrary library(dir.filePath("signatures"));
+        QImage blue(60, 30, QImage::Format_ARGB32);
+        blue.fill(Qt::blue);
+        QCOMPARE(library.add("David", QImage(60, 30, QImage::Format_ARGB32)), QString());
+        QCOMPARE(library.add("Other", blue), QString());
+
+        settings.setValue("signatureKey/David", Signer::certificates().at(0).nickname);
+        settings.setValue("signatureKey/Other", second);
+        Backend backend(nullptr, nullptr, &library, &settings);
+        QVERIFY(backend.openUrl(QUrl::fromLocalFile(source)));
+        QVERIFY(backend.placeSignature("David", 0, 300, 400) >= 0);
+        QVERIFY(backend.placeSignature("Other", 0, 300, 100) >= 0);
+
+        const QString target = dir.filePath("signed.pdf");
+        QVERIFY(backend.saveTo(target));
+        std::unique_ptr<Poppler::Document> document = Poppler::Document::load(target);
+        const auto signatures = document->signatures();
+        QCOMPARE(int(signatures.size()), 2);
+        // The second pass appends to the file, so the first stays valid.
+        for (const auto &signature : signatures)
+            QCOMPARE(signature->validate(Poppler::FormFieldSignature::ValidateOptions()).signatureStatus(),
+                     Poppler::SignatureValidationInfo::SignatureValid);
+    }
+
+    void importingP12CertsAndSigningWithThem() {
+        // A .p12 as every browser and CA tool exports it, protected.
+        QTemporaryDir dir;
+        const QString keyPem = dir.filePath("k.pem"), certPem = dir.filePath("c.pem"), p12 = dir.filePath("c.p12");
+        QProcess::execute(QStringLiteral("openssl"), {QStringLiteral("req"), QStringLiteral("-x509"),
+            QStringLiteral("-newkey"), QStringLiteral("rsa:2048"), QStringLiteral("-keyout"), keyPem,
+            QStringLiteral("-out"), certPem, QStringLiteral("-days"), QStringLiteral("900"),
+            QStringLiteral("-nodes"), QStringLiteral("-subj"), QStringLiteral("/CN=Imported Person/O=Imported Org")});
+        QProcess::execute(QStringLiteral("openssl"), {QStringLiteral("pkcs12"), QStringLiteral("-export"),
+            QStringLiteral("-in"), certPem, QStringLiteral("-inkey"), keyPem, QStringLiteral("-out"), p12,
+            QStringLiteral("-passout"), QStringLiteral("pass:secret123")});
+        QVERIFY(QFile::exists(p12));
+
+        bool needsPassword = false;
+        QString nickname;
+        QVERIFY(!Signer::importCertificate(p12, QString(), &needsPassword, &nickname).isEmpty());
+        QVERIFY(needsPassword);  // protected: the app asks for the file's password
+        QCOMPARE(Signer::importCertificate(p12, QStringLiteral("secret123"), &needsPassword, &nickname), QString());
+        QVERIFY(!nickname.isEmpty());
+        QCOMPARE(Signer::certificates().last().commonName, QStringLiteral("Imported Person"));
+
+        // The imported certificate signs like a created one.
+        const QString source = dir.filePath("lease.pdf");
+        writeBasePdf(source, 1);
+        const QString target = dir.filePath("signed.pdf");
+        QVERIFY(Stamper::stamp(source, target, {}).error.isEmpty());
+        const Signer::Result result = Signer::sign(target, nickname);
+        if (!result.ok)
+            QFAIL(qPrintable(QStringLiteral("signing failed: %1").arg(result.error)));
+        std::unique_ptr<Poppler::Document> document = Poppler::Document::load(target);
+        QVERIFY(document);
+        const auto signatures = document->signatures();
+        QCOMPARE(signatures.size(), 1);
+        const Poppler::SignatureValidationInfo info =
+            signatures.at(0)->validate(Poppler::FormFieldSignature::ValidateOptions());
+        QCOMPARE(info.signatureStatus(), Poppler::SignatureValidationInfo::SignatureValid);
     }
 };
 

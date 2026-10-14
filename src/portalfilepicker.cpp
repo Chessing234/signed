@@ -79,6 +79,12 @@ PortalFileFilter imageFilter() {
              {0, QStringLiteral("*.webp")}}};
 }
 
+PortalFileFilter certificateFilter() {
+    return {QStringLiteral("Certificates"),
+            {{0, QStringLiteral("*.p12")}, {0, QStringLiteral("*.pfx")},
+             {0, QStringLiteral("*.P12")}, {0, QStringLiteral("*.PFX")}}};
+}
+
 PortalFileFilter allFilter() {
     return {QStringLiteral("All files"), {{0, QStringLiteral("*")}}};
 }
@@ -127,6 +133,18 @@ void PortalFilePicker::openImage(const QString &folder) {
     options.insert(QStringLiteral("filters"), QVariant::fromValue(PortalFileFilters{imageFilter(), allFilter()}));
     options.insert(QStringLiteral("current_filter"), QVariant::fromValue(imageFilter()));
     requestFile(QStringLiteral("OpenFile"), QStringLiteral("Choose a Signature Image"), options, Action::OpenImage);
+}
+
+void PortalFilePicker::openCertificate(const QString &folder) {
+    QVariantMap options;
+    options.insert(QStringLiteral("accept_label"), QStringLiteral("Import"));
+    options.insert(QStringLiteral("modal"), true);
+    options.insert(QStringLiteral("multiple"), false);
+    options.insert(QStringLiteral("current_folder"),
+                   portalPathBytes(folderOr(folder, QStandardPaths::DownloadLocation)));
+    options.insert(QStringLiteral("filters"), QVariant::fromValue(PortalFileFilters{certificateFilter(), allFilter()}));
+    options.insert(QStringLiteral("current_filter"), QVariant::fromValue(certificateFilter()));
+    requestFile(QStringLiteral("OpenFile"), QStringLiteral("Import a Certificate"), options, Action::OpenCertificate);
 }
 
 void PortalFilePicker::savePdf(const QUrl &suggestedUrl) {
@@ -231,6 +249,8 @@ void PortalFilePicker::handleResponse(uint response, const QVariantMap &results)
         emit pdfSelected(url);
     else if (action == Action::OpenImage)
         emit imageSelected(url);
+    else if (action == Action::OpenCertificate)
+        emit p12Selected(url);
     else if (action == Action::Save)
         emit saveSelected(url);
 }

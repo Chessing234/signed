@@ -12,6 +12,7 @@ HEADERS += \
     ../src/items.h \
     ../src/pageprovider.h \
     ../src/signatures.h \
+    ../src/signer.h \
     ../src/stamper.h \
     ../src/textlayout.h \
     ../src/theme.h
@@ -22,6 +23,7 @@ SOURCES += \
     ../src/items.cpp \
     ../src/pageprovider.cpp \
     ../src/signatures.cpp \
+    ../src/signer.cpp \
     ../src/stamper.cpp \
     ../src/textlayout.cpp \
     ../src/theme.cpp
