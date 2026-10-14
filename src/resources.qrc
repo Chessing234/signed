@@ -7,5 +7,7 @@
         <file alias="AddSignature.qml">AddSignature.qml</file>
         <file alias="BarButton.qml">BarButton.qml</file>
         <file alias="Confirm.qml">Confirm.qml</file>
+        <file alias="skill.md">skill.md</file>
+        <file alias="items.md">items.md</file>
     </qresource>
 </RCC>

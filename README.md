@@ -23,6 +23,25 @@ Choose **Add signature…** in the Signature menu, or drop an image on the windo
 
 Signatures are saved as PNGs in `~/.local/share/signed/signatures/` (under `$XDG_DATA_HOME` if set), named after the signature. Deleting one from the menu doesn't affect anything already placed.
 
+## Use Signed from the command line
+
+Signed's commands need no display, so a script or an AI agent can sign a PDF from start to finish with your saved signatures.
+
+```sh
+signed signatures                                  # the saved signatures, by name
+signed add-signature "Initials" photo.jpg          # save one from a scan or photo
+signed pages lease.pdf                             # page sizes in points
+signed text lease.pdf --page 4                     # each line of text, with its box
+signed render lease.pdf --page 4 --grid -o p4.png  # look at a page, with a 50-point grid
+signed sign lease.pdf lease-signed.pdf --items items.json
+```
+
+`sign` places each item described in `items.json`: a signature by name, text, or today's date, on a page, at a position in points from the top-left corner. For example, `{"signature": "Alex Morgan", "page": 4, "x": 76, "bottom": 198, "width": 150}`. It checks every item before writing anything, reports all the problems at once, and never writes over the original. `signed help items` prints the whole format. Add `--json` to any command for structured output. Commands exit 0 on success and 1 on failure, with errors on stderr.
+
+`signed` alone lists the commands, and `signed open [pdf]` starts the app. `signed help <command>` lists a command's options.
+
+To teach your coding agents about Signed, run `signed skill install`. It copies a short skill to `~/.agents/skills/signed/`, where Codex finds it, and links it into `~/.claude/skills/` for Claude Code. `signed skill` prints it instead.
+
 ## Hotkeys
 
 | Key | Action |
@@ -65,10 +84,10 @@ Uses Qt's own build tool, `qmake6`:
 
 ```bash
 ./bin/build
-./build/signed some.pdf
+./build/signed open some.pdf
 ```
 
-Run the tests (offscreen) with `./bin/test`, and install as an Arch package with `./bin/install`.
+Run the tests (offscreen, including the command line) with `./bin/test`, and install as an Arch package with `./bin/install`.
 
 ## License
 
