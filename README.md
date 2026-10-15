@@ -2,7 +2,7 @@
 
 ![Signed with a signature, a date, and text placed on a lease](docs/screenshot.png)
 
-Sign PDFs and fill them in. Open a PDF, drop your signature, a line of text, or today's date anywhere on a page, move and size them, and save a signed copy. Modeled on the signing tools in Apple's Preview, and nothing more. On Omarchy, the interface follows your theme's accent color.
+Sign PDFs and fill them in. Open a PDF, drop your signature, a line of text, or today's date anywhere on a page, move and size them, and save a signed copy, optionally sealed with a digital certificate so any later change to it shows. Modeled on the signing tools in Apple's Preview, and nothing more. On Omarchy, the interface follows your theme's accent color.
 
 Built with **Qt Quick (QML)** and the Material style, **poppler** to show pages, and **qpdf** to write the signed copy. The C++ side compiles to a single executable with the QML embedded.
 
@@ -17,15 +17,23 @@ Built with **Qt Quick (QML)** and the Material style, **poppler** to show pages,
 
 The original PDF is never changed, and Signed won't save over it. The signed copy keeps the original pages exactly as they were — text stays selectable, nothing is re-rendered — with your signatures and text laid on top. Placed items stay editable until you close the PDF, so you can fix something and save again.
 
-If you give a signature a digital seal (see below), the saved copy is also cryptographically signed: an invisible PKCS#7 signature covering the whole document, the kind every PDF viewer understands. Signatures without one save as before.
-
 ## Signatures
 
 Choose **Add signature…** in the Signature menu, or drop an image on the window. Use a scan or a well-lit photo of your signature on white paper: Signed removes the paper, keeps the ink (blue stays blue), and crops to it. Slide **Paper threshold** toward *More* if shadows show up, or toward *Less* if faint strokes disappear. PNGs that are already transparent are used as they are. Give it a name like "David" or "Initials".
 
 Signatures are saved as PNGs in `~/.local/share/signed/signatures/` (under `$XDG_DATA_HOME` if set), named after the signature. Deleting one from the menu doesn't affect anything already placed.
 
-A signature can also carry a **digital seal**, off by default. Pick **Create a certificate** under Digital seal when adding the signature (with an optional organization), choose one you already have, or **Import a .p12 file…** from elsewhere (its password is asked once and never stored). The certificates are self-signed and passwordless, in `~/.local/share/signed/certificates/`, so sealing never prompts but anyone using this computer can seal with them. A self-signed seal proves the file wasn't changed after you saved it, not who signed it, and some PDF viewers warn that its signer is unknown.
+## Digital seal
+
+A signature can also seal the copies you save with it. Sealing is off by default; turn it on when you add the signature, under **Digital seal**:
+
+- **Create a certificate** makes a new one for that signature, named after it, with an optional organization.
+- An existing certificate can be picked from the same menu, so several signatures can share one.
+- **Import a .p12 file…** brings in a certificate from elsewhere. Its password is asked once for the import and never stored.
+
+A sealed copy carries an invisible PKCS#7 signature over the whole document, the kind every PDF viewer understands, so any change made after you saved it shows up there. Copies saved with an unsealed signature are saved as before.
+
+The certificates are self-signed, so a seal proves the file wasn't changed, not who signed it, and some PDF viewers say its signer is unknown. They're stored without a password in `~/.local/share/signed/certificates/`, which is created only once you make or import one: sealing never prompts, but anyone using this computer can seal with them.
 
 ## Use Signed from the command line
 
@@ -75,7 +83,7 @@ Letter keys do nothing while you're typing.
 - Password-protected PDFs can't be opened.
 - Form fields aren't filled in as fields; place text over them instead.
 - Signatures come from images; there's no drawing with the mouse.
-- A self-signed signature certificate is cryptographically verifiable but not a qualified electronic signature (QES).
+- A digital seal is self-signed: it shows the file is unchanged, but it isn't a qualified electronic signature (QES).
 
 ## Requirements
 
